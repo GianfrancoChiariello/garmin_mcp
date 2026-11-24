@@ -9,6 +9,7 @@ import os
 import xml.etree.ElementTree as ET
 
 import pytest
+from unittest.mock import MagicMock
 from mcp.server.fastmcp import FastMCP
 
 from garmin_mcp import courses
@@ -653,3 +654,66 @@ def test_resolve_gpx_output_path():
     # 3. Default path
     resolved_default = _resolve_gpx_output_path(123)
     assert resolved_default.endswith("courses/123.gpx") or "123.gpx" in resolved_default
+
+
+_SKELETON = {
+    "courseName": "Piltri",
+    "geoPoints": [
+        {"latitude": -41.95, "longitude": -71.48, "elevation": 1100.0},
+        {"latitude": -41.96, "longitude": -71.47, "elevation": 1500.0},
+    ],
+}
+_SAVED = {"courseId": 777, "courseName": "Piltri", "distanceMeter": 1300.0,
+          "elevationGainMeter": 400.0, "elevationLossMeter": 0.0, "activityTypePk": 3}
+
+
+@pytest.mark.asyncio
+async def test_upload_course_from_gpx_rejects_non_gpx(app_with_courses, mock_garmin_client):
+    result = await app_with_courses.call_tool("upload_course_from_gpx", {"gpx_content": "hola"})
+    assert "does not look like GPX" in _result_text(result)
+    mock_garmin_client.client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_course_from_gpx_rejects_entities(app_with_courses, mock_garmin_client):
+    gpx = '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "b">]><gpx></gpx>'
+    result = await app_with_courses.call_tool("upload_course_from_gpx", {"gpx_content": gpx})
+    assert "DOCTYPE/ENTITY" in _result_text(result)
+    mock_garmin_client.client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_course_from_gpx_and_send(app_with_courses, mock_garmin_client):
+    queued = MagicMock(status_code=200)
+    mock_garmin_client.client.post.side_effect = [dict(_SKELETON), dict(_SAVED), queued]
+    mock_garmin_client.get_device_last_used.return_value = {"userDeviceId": 3498873925}
+
+    result = await app_with_courses.call_tool(
+        "upload_course_from_gpx",
+        {"gpx_content": "<gpx><trk><trkseg></trkseg></trk></gpx>", "send_to_device": True},
+    )
+    data = json.loads(_result_text(result))
+    assert data["course_id"] == 777
+    assert data["device"]["status"] == "success"
+    last = mock_garmin_client.client.post.call_args_list[-1]
+    msg = last.kwargs["json"][0]
+    assert msg["messageType"] == "courses"
+    assert msg["messageUrl"].startswith("course-service/course/fit/777/3498873925")
+
+
+@pytest.mark.asyncio
+async def test_send_course_to_device_unknown_course(app_with_courses, mock_garmin_client):
+    mock_garmin_client.get_device_last_used.return_value = {"userDeviceId": 1}
+    mock_garmin_client.client.connectapi.return_value = {}
+    result = await app_with_courses.call_tool("send_course_to_device", {"course_id": 5})
+    assert "not found" in _result_text(result)
+    mock_garmin_client.client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_course_to_device_http_error(app_with_courses, mock_garmin_client):
+    mock_garmin_client.get_device_last_used.return_value = {"userDeviceId": 1}
+    mock_garmin_client.client.connectapi.return_value = {"courseId": 5, "courseName": "X"}
+    mock_garmin_client.client.post.return_value = MagicMock(status_code=500)
+    result = await app_with_courses.call_tool("send_course_to_device", {"course_id": 5})
+    assert json.loads(_result_text(result))["status"] == "failed"

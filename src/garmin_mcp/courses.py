@@ -67,6 +67,82 @@ _ACTIVITY_TYPE_IDS = {
 }
 
 
+_MAX_GPX_BYTES = 5 * 1024 * 1024
+
+
+def _import_and_save_course(
+    filename: str,
+    gpx_bytes: bytes,
+    course_name: Optional[str],
+    activity_type_id: int,
+    description: Optional[str],
+) -> Dict[str, Any]:
+    parsed = garmin_client.client.post(
+        "connectapi",
+        "/course-service/course/import",
+        files={"file": (filename, io.BytesIO(gpx_bytes), "application/gpx+xml")},
+        api=True,
+    )
+    effective_name = (
+        course_name
+        or parsed.get("courseName")
+        or os.path.splitext(filename)[0]
+    )
+    payload = _build_course_payload(
+        parsed,
+        course_name=effective_name,
+        activity_type_id=activity_type_id,
+        description=description,
+    )
+    saved = garmin_client.client.post(
+        "connectapi", "/course-service/course", json=payload, api=True,
+    )
+    return {
+        "status": "success",
+        "course_id": saved.get("courseId"),
+        "name": saved.get("courseName"),
+        "distance_m": saved.get("distanceMeter"),
+        "elevation_gain_m": saved.get("elevationGainMeter"),
+        "elevation_loss_m": saved.get("elevationLossMeter"),
+        "activity_type_id": saved.get("activityTypePk"),
+        "url": f"https://connect.{garmin_client.client.domain}/modern/course/{saved.get('courseId')}",
+    }
+
+
+def _default_device_id() -> Optional[int]:
+    last_used = garmin_client.get_device_last_used() or {}
+    return last_used.get("userDeviceId")
+
+
+def _queue_course_on_device(course_id: int, course_name: str, device_id: int) -> Dict[str, Any]:
+    # Same message the "Send to Device" button in Garmin Connect queues; the
+    # watch downloads the course FIT at its next sync.
+    payload = [{
+        "deviceId": device_id,
+        "messageUrl": f"course-service/course/fit/{course_id}/{device_id}?elevation=true",
+        "messageType": "courses",
+        "groupName": None,
+        "messageName": course_name,
+        "priority": 1,
+        "fileType": "FIT",
+        "metaDataId": course_id,
+    }]
+    response = garmin_client.client.post(
+        "connectapi", "device-service/devicemessage/messages", json=payload
+    )
+    ok = response.status_code in (200, 204)
+    return {
+        "status": "success" if ok else "failed",
+        "course_id": course_id,
+        "device_id": device_id,
+        "http_status": response.status_code,
+        "message": (
+            f"Queued course {course_id} for device {device_id}; it arrives at the next sync"
+            if ok else f"Failed to send course: HTTP {response.status_code}"
+        ),
+    }
+
+
 def _build_course_payload(
     parsed_skeleton: Dict[str, Any],
     course_name: str,
@@ -398,53 +474,107 @@ def register_tools(app):
             with open(gpx_path, "rb") as f:
                 gpx_bytes = f.read()
 
-            # Step 1: parse the GPX server-side
-            parsed = garmin_client.client.post(
-                "connectapi",
-                "/course-service/course/import",
-                files={
-                    "file": (
-                        os.path.basename(gpx_path),
-                        io.BytesIO(gpx_bytes),
-                        "application/gpx+xml",
-                    )
-                },
-                api=True,
-            )
-
-            effective_name = (
-                course_name
-                or parsed.get("courseName")
-                or os.path.splitext(os.path.basename(gpx_path))[0]
-            )
-
-            # Step 2: build the create payload and save
-            payload = _build_course_payload(
-                parsed,
-                course_name=effective_name,
+            result = _import_and_save_course(
+                os.path.basename(gpx_path),
+                gpx_bytes,
+                course_name=course_name,
                 activity_type_id=activity_type_id,
                 description=description,
             )
-
-            saved = garmin_client.client.post(
-                "connectapi", "/course-service/course", json=payload, api=True,
-            )
-            return json.dumps(
-                {
-                    "status": "success",
-                    "course_id": saved.get("courseId"),
-                    "name": saved.get("courseName"),
-                    "distance_m": saved.get("distanceMeter"),
-                    "elevation_gain_m": saved.get("elevationGainMeter"),
-                    "elevation_loss_m": saved.get("elevationLossMeter"),
-                    "activity_type_id": saved.get("activityTypePk"),
-                    "url": f"https://connect.{garmin_client.client.domain}/modern/course/{saved.get('courseId')}",
-                },
-                indent=2,
-            )
+            return json.dumps(result, indent=2)
 
         except Exception as e:
             return f"Error uploading course: {str(e)}"
+
+    @app.tool()
+    async def upload_course_from_gpx(
+        gpx_content: str,
+        course_name: Optional[str] = None,
+        activity_type: str = "hiking",
+        description: Optional[str] = None,
+        send_to_device: bool = False,
+    ) -> str:
+        """Upload a course to Garmin Connect from GPX text sent in the call.
+
+        Use this when the GPX comes from the chat (no file on the server).
+        Optionally queues the new course on the watch in the same call.
+
+        Args:
+            gpx_content: Full GPX XML text (max 5 MB).
+            course_name: Override the name parsed from the GPX (max 128 chars).
+            activity_type: running, cycling, hiking, walking, trail_running,
+                mountain_biking, road_biking or gravel_cycling. Defaults to hiking.
+            description: Optional description (max 512 chars).
+            send_to_device: If true, also queue the course on the most recently
+                used device ("Send to Device"); it arrives at the next sync.
+        """
+        try:
+            gpx_bytes = gpx_content.encode("utf-8")
+            if len(gpx_bytes) > _MAX_GPX_BYTES:
+                return "Error: GPX is larger than 5 MB."
+            if b"<gpx" not in gpx_bytes[:2048]:
+                return "Error: content does not look like GPX (no <gpx> root)."
+            if b"<!DOCTYPE" in gpx_bytes or b"<!ENTITY" in gpx_bytes:
+                return "Error: GPX with DOCTYPE/ENTITY declarations is not accepted."
+
+            activity_type_id = _ACTIVITY_TYPE_IDS.get(activity_type.lower())
+            if activity_type_id is None:
+                return (
+                    f"Error: unknown activity_type '{activity_type}'. "
+                    f"Supported: {', '.join(sorted(_ACTIVITY_TYPE_IDS))}."
+                )
+
+            result = _import_and_save_course(
+                "course.gpx",
+                gpx_bytes,
+                course_name=course_name,
+                activity_type_id=activity_type_id,
+                description=description,
+            )
+            if send_to_device and result.get("course_id"):
+                device_id = _default_device_id()
+                if not device_id:
+                    result["device"] = {"status": "failed", "message": "No default device found."}
+                else:
+                    result["device"] = _queue_course_on_device(
+                        result["course_id"], result.get("name") or "Course", device_id
+                    )
+            return json.dumps(result, indent=2)
+        except Exception as e:
+            return f"Error uploading course: {str(e)}"
+
+    @app.tool()
+    async def send_course_to_device(
+        course_id: int, device_id: Optional[int] = None
+    ) -> str:
+        """Send an existing Garmin Connect course to the watch ("Send to Device").
+
+        Queues the course in Garmin's device message queue; the watch picks it
+        up at its next sync. Each call queues another copy, so do not repeat it.
+
+        Args:
+            course_id: ID of the course (from get_courses or upload_course_from_gpx).
+            device_id: Device ID (optional; defaults to the most recently used device).
+        """
+        try:
+            if device_id is None:
+                device_id = _default_device_id()
+                if not device_id:
+                    return json.dumps({
+                        "status": "failed",
+                        "message": "No default device found. Pass device_id (see get_devices).",
+                    }, indent=2)
+            data = garmin_client.client.connectapi(f"/course-service/course/{course_id}")
+            if not isinstance(data, dict) or not data.get("courseId"):
+                return f"Error: course {course_id} not found."
+            name = data.get("courseName") or f"Course {course_id}"
+            return json.dumps(_queue_course_on_device(course_id, name, device_id), indent=2)
+        except Exception as e:
+            return json.dumps({
+                "status": "failed",
+                "course_id": course_id,
+                "message": f"Failed to send course: {str(e)}",
+            }, indent=2)
 
     @app.tool()
     async def delete_course(course_id: int, confirm: bool = False) -> str:

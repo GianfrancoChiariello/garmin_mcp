@@ -88,8 +88,16 @@
       "description": "Add a new weight measurement with specific timestamps"
     },
     {
+      "name": "copy_workout",
+      "description": "Duplicate a workout of the library under a new name."
+    },
+    {
       "name": "count_activities",
       "description": "Get total count of activities in the user's Garmin account"
+    },
+    {
+      "name": "create_calendar_note",
+      "description": "Add a note to a day of the Garmin Connect calendar."
     },
     {
       "name": "create_custom_food",
@@ -122,6 +130,10 @@
     {
       "name": "delete_activity",
       "description": "Permanently delete an activity from Garmin Connect."
+    },
+    {
+      "name": "delete_calendar_note",
+      "description": "Delete a Garmin calendar note. Cannot be undone."
     },
     {
       "name": "delete_course",
@@ -316,6 +328,10 @@
       "description": "Get earned badges for user"
     },
     {
+      "name": "get_effective_goals",
+      "description": "Daily goals in effect on a day: intensity minutes, floors, hydration, weight."
+    },
+    {
       "name": "get_endurance_score",
       "description": "Get endurance score data between dates"
     },
@@ -508,6 +524,10 @@
       "description": "Get detailed steps data with 15-minute intervals"
     },
     {
+      "name": "get_steps_goal",
+      "description": "Step goal in effect on a day (manual or the device's automatic goal)."
+    },
+    {
       "name": "get_stress_data",
       "description": "Get full stress time-series data"
     },
@@ -546,6 +566,10 @@
     {
       "name": "get_user_profile",
       "description": "Get user profile information"
+    },
+    {
+      "name": "get_user_settings",
+      "description": "Raw Garmin user settings (userData, sleep schedule, formats, units)."
     },
     {
       "name": "get_user_summary",
@@ -624,6 +648,14 @@
       "description": "Search Garmin's general food catalog (FatSecret + Garmin custom foods)"
     },
     {
+      "name": "send_course_to_device",
+      "description": "Send an existing Garmin Connect course to the watch (\"Send to Device\")."
+    },
+    {
+      "name": "send_scheduled_workouts_to_devices",
+      "description": "Push every scheduled workout in the Garmin calendar to the user's devices."
+    },
+    {
       "name": "set_activity_description",
       "description": "Set or update the free-text description (notes) of an activity."
     },
@@ -652,6 +684,10 @@
       "description": "Set blood pressure values"
     },
     {
+      "name": "set_daily_goal",
+      "description": "Set a daily wellness goal."
+    },
+    {
       "name": "set_fit_download_dir",
       "description": "Set and persist the default directory for downloaded activity files."
     },
@@ -668,6 +704,14 @@
       "description": "Set the perceived effort (RPE) for an activity."
     },
     {
+      "name": "set_sleep_schedule",
+      "description": "Set the usual bedtime and wake time in the Garmin profile (used for sleep tracking)."
+    },
+    {
+      "name": "set_steps_goal",
+      "description": "Set a manual daily step goal, or go back to the automatic goal."
+    },
+    {
       "name": "unschedule_workout",
       "description": "Remove a scheduled workout from the Garmin Connect calendar"
     },
@@ -676,12 +720,24 @@
       "description": "Remove multiple scheduled workouts from the Garmin Connect calendar"
     },
     {
+      "name": "update_calendar_note",
+      "description": "Change the date, title or body of a Garmin calendar note."
+    },
+    {
       "name": "update_custom_food",
       "description": "Update an existing custom food in the user's Garmin nutrition library"
     },
     {
+      "name": "update_workout",
+      "description": "Replace an existing workout in place, keeping its id (and its schedules)."
+    },
+    {
       "name": "upload_course",
       "description": "Upload a GPX file as a Garmin Connect Course."
+    },
+    {
+      "name": "upload_course_from_gpx",
+      "description": "Upload a course to Garmin Connect from GPX text sent in the call."
     },
     {
       "name": "upload_workout",

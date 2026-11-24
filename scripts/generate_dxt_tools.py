@@ -31,6 +31,7 @@ from garmin_mcp import (
     womens_health,
     workout_builders,
     workouts,
+    jarvis_extras,
 )
 
 # Same modules, same order, as the `configure`/`register_tools` calls in
@@ -52,6 +53,7 @@ MODULES = [
     courses,
     activity_analysis,
     calendar_events,
+    jarvis_extras,
 ]
 
 MANIFEST_PATH = Path(__file__).resolve().parent.parent / "dxt" / "manifest.json"

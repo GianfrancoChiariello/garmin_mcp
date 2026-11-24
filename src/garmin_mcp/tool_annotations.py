@@ -14,6 +14,9 @@ from mcp.types import ToolAnnotations
 # configuration, so it is a write even though it does not contact Garmin.
 ADDITIVE_TOOLS = frozenset(
     {
+        "copy_workout",
+        "create_calendar_note",
+        "send_scheduled_workouts_to_devices",
         "add_body_composition",
         "add_gear_to_activity",
         "add_hydration_data",
@@ -35,7 +38,9 @@ ADDITIVE_TOOLS = frozenset(
         "schedule_workouts",
         "set_blood_pressure",
         "set_fit_download_dir",
+        "send_course_to_device",
         "upload_course",
+        "upload_course_from_gpx",
         "upload_workout",
         "upload_workouts",
         "upsert_and_log",
@@ -48,6 +53,12 @@ ADDITIVE_TOOLS = frozenset(
 # they are deliberately not marked read-only either.
 DESTRUCTIVE_TOOLS = frozenset(
     {
+        "set_sleep_schedule",
+        "delete_calendar_note",
+        "set_daily_goal",
+        "set_steps_goal",
+        "update_calendar_note",
+        "update_workout",
         "delete_activity",
         "delete_course",
         "delete_custom_food",
@@ -95,6 +106,9 @@ LOCAL_ONLY_TOOLS = frozenset({"set_fit_download_dir"})
 # registered tool list and fails when upstream adds a tool.
 READ_ONLY_TOOLS = frozenset(
     {
+        "get_effective_goals",
+        "get_steps_goal",
+        "get_user_settings",
         "count_activities",
         "get_acclimation",
         "get_activities",

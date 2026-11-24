@@ -6,6 +6,24 @@ This Model Context Protocol (MCP) server connects to Garmin Connect and exposes 
 
 Garmin's API is accessed via the awesome [python-garminconnect](https://github.com/cyberjunky/python-garminconnect) library.
 
+## What this fork adds
+
+Fork of [Taxuspt/garmin_mcp](https://github.com/Taxuspt/garmin_mcp) with 14 extra tools (171 in total), all covered by tests and checked against a real Garmin account (Forerunner 165) on 2026-11-24. Endpoints for the new write tools follow [python-garminconnect 0.3.20](https://github.com/cyberjunky/python-garminconnect); they are called through the pinned 0.3.2 client, so dependencies are unchanged.
+
+**Routes to the watch**
+- `upload_course_from_gpx`: upload a course from GPX text sent in the call (no file on the server needed); optional `send_to_device`.
+- `send_course_to_device`: "Send to Device" for an existing course; it arrives at the next sync.
+
+**Calendar, goals and workouts**
+- `send_scheduled_workouts_to_devices`
+- `create_calendar_note`, `update_calendar_note`, `delete_calendar_note`
+- `get_effective_goals`, `set_daily_goal` (intensity minutes, floors, hydration)
+- `get_steps_goal`, `set_steps_goal` (manual or automatic)
+- `copy_workout`, `update_workout` (full in-place replace, keeps schedules)
+- `get_user_settings`, `set_sleep_schedule` (bedtime and wake time used for sleep tracking)
+
+Not added: writing watch alarms. Recent watches such as the Forerunner 165 keep alarms on the device; the account settings carry no alarm block.
+
 ## Features
 
 - List recent activities with pagination support
