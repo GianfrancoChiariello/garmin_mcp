@@ -552,3 +552,34 @@ def test_build_strength_json_two_multi_set_exercises_have_distinct_orders():
 )
 def test_every_builder_and_template_numbers_steps_depth_first(workout):
     _assert_depth_first_numbering(workout)
+
+
+def test_strength_spanish_label_and_language():
+    from garmin_mcp.workout_builders import build_strength_json
+    w = build_strength_json(
+        "Torso B",
+        [{"name": "PULL_UP", "category": "PULL_UP", "label": "Dominadas",
+          "sets": 3, "reps": 10, "rest_seconds": 90}],
+        language="es",
+    )
+    group = w["workoutSegments"][0]["workoutSteps"][0]
+    work, rest = group["workoutSteps"]
+    assert work["exerciseName"] == "PULL_UP"
+    assert work["description"] == "Dominadas · 3x10"
+    assert rest["description"] == "Descanso 90 s"
+    assert w["description"] == "Fuerza: 1 ejercicios"
+
+
+def test_strength_default_stays_english():
+    from garmin_mcp.workout_builders import build_strength_json
+    w = build_strength_json("X", [{"name": "PULL_UP", "sets": 2, "reps": 5, "rest_seconds": 60}])
+    work, rest = w["workoutSegments"][0]["workoutSteps"][0]["workoutSteps"]
+    assert work["description"] == "PULL_UP: 2 sets x 5 reps"
+    assert rest["description"] == "Rest 60s"
+
+
+def test_strength_rejects_bad_language():
+    import pytest
+    from garmin_mcp.workout_builders import build_strength_json
+    with pytest.raises(ValueError):
+        build_strength_json("X", [{"name": "PULL_UP"}], language="fr")
