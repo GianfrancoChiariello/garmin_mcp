@@ -441,9 +441,24 @@ def build_z2_walk_json(
     }
 
 
+_STRENGTH_TEXT = {
+    "en": {
+        "work": lambda label, sets, reps: f"{label}: {sets} sets x {reps} reps",
+        "rest": lambda secs: f"Rest {secs}s",
+        "summary": lambda n: f"Strength: {n} exercises",
+    },
+    "es": {
+        "work": lambda label, sets, reps: f"{label} · {sets}x{reps}",
+        "rest": lambda secs: f"Descanso {secs} s",
+        "summary": lambda n: f"Fuerza: {n} ejercicios",
+    },
+}
+
+
 def build_strength_json(
     name: str,
     exercises: List[Dict[str, Any]],
+    language: str = "en",
 ) -> dict:
     """Build the Garmin Connect JSON for a strength workout.
 
@@ -461,7 +476,14 @@ def build_strength_json(
     and rejects anything outside it, including "UNASSIGNED" and "OTHER"; omitting the
     key is accepted. Valid values come from Garmin's published catalog:
     https://connect.garmin.com/web-data/exercises/Exercises.json
+
+    "label" is optional: the text shown in the step description, so the watch can
+    show a translated name while "name" stays the catalog key Garmin recognises.
+    "language" ("en" or "es") sets the wording of descriptions and rest steps.
     """
+    if language not in _STRENGTH_TEXT:
+        raise ValueError(f"language must be one of {sorted(_STRENGTH_TEXT)}")
+    text = _STRENGTH_TEXT[language]
     steps: List[dict] = []
     step_order = 1
 
@@ -475,13 +497,17 @@ def build_strength_json(
             _require_minimum(0, rest_seconds=rest_seconds)
         except ValueError as e:
             raise ValueError(f"exercise {ex_name!r}: {e}") from e
+        label = ex.get("label")
+        if label is not None and (not isinstance(label, str) or not label.strip()):
+            raise ValueError(f"label for exercise {ex_name!r} must be a non-empty string")
+        label = label.strip() if label else ex_name
 
         # Work step
         step = {
             "type": "ExecutableStepDTO",
             "stepOrder": step_order,
             "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
-            "description": f"{ex_name}: {sets} sets x {reps} reps",
+            "description": text["work"](label, sets, reps),
             "endCondition": {"conditionTypeId": 10, "conditionTypeKey": "reps"},
             "endConditionValue": float(reps),
             "targetType": {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target"},
@@ -514,7 +540,7 @@ def build_strength_json(
                     "type": "ExecutableStepDTO",
                     "stepOrder": step_order + 2,
                     "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery"},
-                    "description": f"Rest {rest_seconds}s",
+                    "description": text["rest"](rest_seconds),
                     "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
                     "endConditionValue": float(rest_seconds),
                     "targetType": {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target"},
@@ -545,7 +571,7 @@ def build_strength_json(
                 "type": "ExecutableStepDTO",
                 "stepOrder": step_order,
                 "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery"},
-                "description": f"Rest {rest_seconds}s",
+                "description": text["rest"](rest_seconds),
                 "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
                 "endConditionValue": float(rest_seconds),
                 "targetType": {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target"},
@@ -554,7 +580,7 @@ def build_strength_json(
 
     return {
         "workoutName": name,
-        "description": f"Strength: {len(exercises)} exercises",
+        "description": text["summary"](len(exercises)),
         "sportType": {"sportTypeId": 5, "sportTypeKey": "strength_training"},
         "workoutSegments": [{
             "segmentOrder": 1,
@@ -794,6 +820,7 @@ def register_tools(app):
     async def create_strength_workout(
         name: str,
         exercises: List[Dict[str, Any]],
+        language: str = "en",
     ) -> str:
         """Create a strength workout and upload it to Garmin Connect.
 
@@ -813,9 +840,13 @@ def register_tools(app):
                 anything else, including "UNASSIGNED" and "OTHER", is rejected with
                 400 Invalid category. Full list:
                 https://connect.garmin.com/web-data/exercises/Exercises.json
+                Optional "label": text shown on the watch for that step (e.g. a
+                Spanish name), while "name" stays the catalog key.
+            language: "en" (default) or "es" — wording of step descriptions,
+                rest steps and the workout summary.
         """
         try:
-            workout_json = build_strength_json(name=name, exercises=exercises)
+            workout_json = build_strength_json(name=name, exercises=exercises, language=language)
             result = garmin_client.upload_workout(workout_json)
 
             if isinstance(result, dict):
